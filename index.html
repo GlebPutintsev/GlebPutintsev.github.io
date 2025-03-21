@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebHealth API - Мониторинг</title>
+    <style>
+        :root {
+            --primary-color: #212529;
+            --secondary-color: #343a40;
+            --accent-color: #ffc107;
+            --text-color: #f8f9fa;
+            --border-color: #495057;
+            --success-color: #28a745;
+            --warning-color: #dc3545;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: var(--text-color);
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background-color: var(--primary-color);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent-color);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .card {
+            background-color: var(--secondary-color);
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card-header {
+            background-color: var(--primary-color);
+            padding: 10px 15px;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .card-header .badge {
+            background-color: var(--accent-color);
+            color: var(--primary-color);
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .card-body {
+            padding: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        table th, table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        table th {
+            background-color: var(--primary-color);
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+        
+        table tr:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-ok {
+            background-color: var(--success-color);
+        }
+        
+        .status-warning {
+            background-color: var(--warning-color);
+        }
+        
+        .status-unknown {
+            background-color: #6c757d;
+        }
+        
+        .uptime {
+            color: var(--success-color);
+            font-weight: bold;
+        }
+        
+        .delay {
+            color: var(--warning-color);
+        }
+        
+        .fra-usage {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        .progress-bar {
+            flex-grow: 1;
+            height: 20px;
+            background-color: #444;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: var(--accent-color);
+            transition: width 0.3s ease;
+        }
+        
+        .refresh-btn {
+            background-color: var(--accent-color);
+            color: var(--primary-color);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .refresh-btn:hover {
+            background-color: #e0a800;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid var(--accent-color);
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .card-grid-full {
+            grid-column: 1 / -1;
+        }
+        
+        .error-message {
+            color: var(--warning-color);
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .timestamp {
+            font-size: 12px;
+            text-align: right;
+            color: #adb5bd;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>WebHealth API - Мониторинг</h1>
+        <button id="refreshBtn" class="refresh-btn">Обновить данные</button>
+    </div>
+    
+    <div class="container">
+        <div class="dashboard">
+            <div class="card card-grid-full">
+                <div class="card-header">
+                    <span>ИНТЕГРАЦИИ</span>
+                </div>
+                <div class="card-body">
+                    <div id="servicesLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <table id="servicesTable" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>ИМЯ ПО</th>
+                                <th>ОПИСАНИЕ</th>
+                                <th>ТИП ПО</th>
+                                <th>СЕРВЕР</th>
+                                <th>ИНТ</th>
+                                <th>ПРОШЛО</th>
+                                <th>ОБНОВЛЕНО</th>
+                                <th>О</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servicesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>БД "СИНХРОН"</span>
+                </div>
+                <div class="card-body">
+                    <div id="uptimeLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <table id="uptimeTable" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>SESSIONS</th>
+                                <th>LOCKS</th>
+                                <th>UPTIME</th>
+                            </tr>
+                        </thead>
+                        <tbody id="uptimeBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>ПРИМЕНЕНИЕ ЖУРНАЛОВ</span>
+                </div>
+                <div class="card-body">
+                    <div id="journalsLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <table id="journalsTable" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>PRM</th>
+                                <th>SCN2TMSP</th>
+                                <th>DELAY</th>
+                            </tr>
+                        </thead>
+                        <tbody id="journalsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>ПРОЦЕНТ ИСПОЛЬЗОВАНИЯ FRA</span>
+                </div>
+                <div class="card-body">
+                    <div id="fraLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <div id="fraContent" style="display: none;">
+                        <table id="fraTable">
+                            <thead>
+                                <tr>
+                                    <th>ИСПОЛЬЗОВАНО</th>
+                                    <th>ВСЕГО</th>
+                                    <th>% ИСП</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fraBody"></tbody>
+                        </table>
+                        <div class="fra-usage">
+                            <span>0%</span>
+                            <div class="progress-bar">
+                                <div id="fraProgressBar" class="progress-fill" style="width: 0%"></div>
+                            </div>
+                            <span>100%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>МОБИЛЬНЫЙ "СИНХРОН"</span>
+                    <span class="badge" id="ptsdBadge">0</span>
+                </div>
+                <div class="card-body">
+                    <div id="ptsdLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <table id="ptsdTable" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>ПО</th>
+                                <th>ТЕРМИНАЛ</th>
+                                <th>КЛИЕНТЫ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ptsdBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>ОЧЕРЕДИ ИЗ "RMS"</span>
+                </div>
+                <div class="card-body">
+                    <div id="queueRmsLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <table id="queueRmsTable" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>ТАБЛИЦА</th>
+                                <th>ЗАПИСИ</th>
+                                <th>ОТДЕЛ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queueRmsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>МОБИЛЬНЫЙ "RMS"</span>
+                </div>
+                <div class="card-body">
+                    <div id="ptsdRmsLoading" class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <table id="ptsdRmsTable" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>КЛИЕНТЫ</th>
+                                <th>ПРИНЯТО</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ptsdRmsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="timestamp">Последнее обновление: <span id="lastUpdate"></span></div>
+    </div>
+    
+    <script>
+        const API_BASE_URL = 'http://10.96.183.116:8000/api/v1';
+        
+        // Форматирование чисел
+        function formatNumber(num) {
+            return new Intl.NumberFormat('ru-RU').format(num);
+        }
+        
+        // Форматирование даты и времени
+        function formatDateTime(dateTimeStr) {
+            if (!dateTimeStr) return '';
+            const date = new Date(dateTimeStr);
+            return date.toLocaleString('ru-RU');
+        }
+        
+        // Получение статуса сервиса
+        function getServiceStatus(service) {
+            if (service.Diff > service.Interval) {
+                return 'status-warning';
+            } else {
+                return 'status-ok';
+            }
+        }
+        
+        // Форматирование байтов в человекочитаемый формат
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Отрисовка таблицы сервисов
+        function renderServices(services) {
+            const tbody = document.getElementById('servicesBody');
+            tbody.innerHTML = '';
+            
+            services.forEach(service => {
+                const row = document.createElement('tr');
+                const statusClass = getServiceStatus(service);
+                
+                row.innerHTML = `
+                    <td>
+                        <span class="status-indicator ${statusClass}"></span>
+                        ${service.Name}
+                    </td>
+                    <td>${service.Desc}</td>
+                    <td>${service.Type}</td>
+                    <td>${service.Server}</td>
+                    <td>${service.Int}</td>
+                    <td>${service.Diff}</td>
+                    <td>${service.UpdatedAt}</td>
+                    <td>${service.Queue}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('servicesLoading').style.display = 'none';
+            document.getElementById('servicesTable').style.display = 'table';
+        }
+        
+        // Отрисовка таблицы uptime
+        function renderUptime(uptime) {
+            const tbody = document.getElementById('uptimeBody');
+            tbody.innerHTML = '';
+            
+            uptime.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.SESNUM}</td>
+                    <td>${item.LOCKNUM}</td>
+                    <td class="uptime">${item.UPTIME}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('uptimeLoading').style.display = 'none';
+            document.getElementById('uptimeTable').style.display = 'table';
+        }
+        
+        // Отрисовка таблицы журналов
+        function renderJournals(journals) {
+            const tbody = document.getElementById('journalsBody');
+            tbody.innerHTML = '';
+            
+            journals.forEach(journal => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${journal.PRM}</td>
+                    <td>${journal.SCN2TMSP}</td>
+                    <td class="${journal.DELAY ? 'delay' : ''}">${journal.DELAY || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('journalsLoading').style.display = 'none';
+            document.getElementById('journalsTable').style.display = 'table';
+        }
+        
+        // Отрисовка данных о FRA
+        function renderFraUsage(fraData) {
+            const tbody = document.getElementById('fraBody');
+            tbody.innerHTML = '';
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${formatNumber(fraData.ИСПОЛЬЗОВАНО)}</td>
+                <td>${formatNumber(fraData.ВСЕГО)}</td>
+                <td>${fraData.ПРОЦЕНТ.toFixed(1)}%</td>
+            `;
+            tbody.appendChild(row);
+            
+            // Обновление прогресс-бара
+            const progressBar = document.getElementById('fraProgressBar');
+            progressBar.style.width = `${fraData.ПРОЦЕНТ}%`;
+            
+            // Изменение цвета прогресс-бара в зависимости от заполнения
+            if (fraData.ПРОЦЕНТ > 85) {
+                progressBar.style.backgroundColor = 'var(--warning-color)';
+            } else if (fraData.ПРОЦЕНТ > 70) {
+                progressBar.style.backgroundColor = 'orange';
+            } else {
+                progressBar.style.backgroundColor = 'var(--accent-color)';
+            }
+            
+            document.getElementById('fraLoading').style.display = 'none';
+            document.getElementById('fraContent').style.display = 'block';
+        }
+        
+        // Отрисовка таблицы PTSD
+        function renderPtsd(ptsd) {
+            const tbody = document.getElementById('ptsdBody');
+            tbody.innerHTML = '';
+            
+            let totalClients = 0;
+            
+            ptsd.forEach(item => {
+                totalClients += item.CT;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.PROG}</td>
+                    <td>${item.TERMINAL}</td>
+                    <td>${item.CT}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Обновление бейджа
+            document.getElementById('ptsdBadge').textContent = totalClients;
+            
+            document.getElementById('ptsdLoading').style.display = 'none';
+            document.getElementById('ptsdTable').style.display = 'table';
+        }
+        
+        // Отрисовка таблицы очередей RMS
+        function renderQueueRms(queueRms) {
+            const tbody = document.getElementById('queueRmsBody');
+            tbody.innerHTML = '';
+            
+            queueRms.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.DEPARTMENT}</td>
+                    <td>${item.CT}</td>
+                    <td>${item.SA}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('queueRmsLoading').style.display = 'none';
+            document.getElementById('queueRmsTable').style.display = 'table';
+        }
+        
+        // Отрисовка таблицы PTSD RMS
+        function renderPtsdRms(ptsdRms) {
+            const tbody = document.getElementById('ptsdRmsBody');
+            tbody.innerHTML = '';
+            
+            ptsdRms.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.NAME}</td>
+                    <td>${item.STATE_CHANGE}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('ptsdRmsLoading').style.display = 'none';
+            document.getElementById('ptsdRmsTable').style.display = 'table';
+        }
+        
+        // Обновление таймштампа
+        function updateTimestamp() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = now.toLocaleString('ru-RU');
+        }
+        
+        // Показать все индикаторы загрузки
+        function showAllLoaders() {
+            document.getElementById('servicesLoading').style.display = 'flex';
+            document.getElementById('uptimeLoading').style.display = 'flex';
+            document.getElementById('journalsLoading').style.display = 'flex';
+            document.getElementById('fraLoading').style.display = 'flex';
+            document.getElementById('ptsdLoading').style.display = 'flex';
+            document.getElementById('queueRmsLoading').style.display = 'flex';
+            document.getElementById('ptsdRmsLoading').style.display = 'flex';
+            
+            document.getElementById('servicesTable').style.display = 'none';
+            document.getElementById('uptimeTable').style.display = 'none';
+            document.getElementById('journalsTable').style.display = 'none';
+            document.getElementById('fraContent').style.display = 'none';
+            document.getElementById('ptsdTable').style.display = 'none';
+            document.getElementById('queueRmsTable').style.display = 'none';
+            document.getElementById('ptsdRmsTable').style.display = 'none';
+        }
+        
+        // Обработка ошибок
+        function handleError(elementId, error) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="error-message">Ошибка загрузки данных: ${error.message}</div>`;
+            element.style.display = 'block';
+        }
+        
+        // Загрузка всех данных
+        async function loadAllData() {
+            showAllLoaders();
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agent-status`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                renderServices(data.Services);
+                renderUptime(data.UPTIME);
+                renderJournals(data.JOURNALS);
+                renderPtsd(data.PTSD);
+                renderQueueRms(data.QUEUE_RMS);
+                renderPtsdRms(data.PTSD_RMS);
+                
+                // Получение данных о FRA
+                try {
+                    const fraResponse = await fetch(`${API_BASE_URL}/fra-usage`);
+                    if (fraResponse.ok) {
+                        const fraData = await fraResponse.json();
+                        renderFraUsage(fraData);
+                    } else {
+                        throw new Error(`HTTP error! status: ${fraResponse.status}`);
+                    }
+                } catch (error) {
+                    handleError('fraLoading', error);
+                }
+                
+                updateTimestamp();
+            } catch (error) {
+                console.error('Ошибка при загрузке данных:', error);
+                handleError('servicesLoading', error);
+                handleError('uptimeLoading', error);
+                handleError('journalsLoading', error);
+                handleError('fraLoading', error);
+                handleError('ptsdLoading', error);
+                handleError('queueRmsLoading', error);
+                handleError('ptsdRmsLoading', error);
+            }
+        }
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            // Загрузка данных при загрузке страницы
+            loadAllData();
+            
+            // Обработчик кнопки обновления
+            document.getElementById('refreshBtn').addEventListener('click', loadAllData);
+            
+            // Автоматическое обновление каждые 60 секунд
+            setInterval(loadAllData, 60000);
+        });
+    </script>
+</body>
+</html>
